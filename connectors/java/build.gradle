@@ -1,7 +1,8 @@
 group 'com.fabriceci.fmc'
-version '1.0-SNAPSHOT'
+version '1.1-SNAPSHOT'
 
 apply plugin: 'java'
+apply plugin: 'maven-publish'
 
 targetCompatibility = '1.8'
 sourceCompatibility = '1.8'
@@ -16,9 +17,31 @@ task fatJar(type: Jar) {
     with jar
 }
 
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives fatJar
+}
+
 dependencies {
     compile('javax.servlet:javax.servlet-api:3.1.0')
     compile('org.slf4j:slf4j-api:1.7.21')
     compile('org.imgscalr:imgscalr-lib:4.2')
     testCompile('junit:junit:4.11')
+}
+
+//use "gradle publishToMavenLocal" to install artifact to your local .m2-repo
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId 'com.fabriceci.fmc'
+            artifactId 'fmconnector'
+
+            artifact sourcesJar
+            artifact fatJar
+        }
+    }
 }
