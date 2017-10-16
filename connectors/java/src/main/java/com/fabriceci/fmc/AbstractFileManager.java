@@ -1,5 +1,23 @@
 package com.fabriceci.fmc;
 
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Properties;
+import java.util.regex.PatternSyntaxException;
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import com.fabriceci.fmc.error.FMIOException;
 import com.fabriceci.fmc.error.FMInitializationException;
 import com.fabriceci.fmc.error.FMSyntaxException;
@@ -12,21 +30,6 @@ import org.json.JSONException;
 import org.json.JSONObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.awt.image.BufferedImage;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.FileVisitResult;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.*;
-import java.util.regex.PatternSyntaxException;
 
 public abstract class AbstractFileManager implements IFileManager {
 
@@ -389,6 +392,11 @@ public abstract class AbstractFileManager implements IFileManager {
         security.put("allowNoExtension", Boolean.parseBoolean(propertiesConfig.getProperty("allowNoExtension")));
         security.put("editRestrictions", propertiesConfig.getProperty("editRestrictions").split(","));
 
+        JSONObject securityExtensions = new JSONObject();
+        securityExtensions.put("policy", propertiesConfig.getProperty("upload_policy"));
+        securityExtensions.put("restrictions", propertiesConfig.getProperty("upload_restrictions").split(","));
+        security.put("extensions", securityExtensions);
+
         JSONObject upload = new JSONObject();
         try {
             upload.put("fileSizeLimit", Long.parseLong(propertiesConfig.getProperty("upload_fileSizeLimit")));
@@ -485,14 +493,14 @@ public abstract class AbstractFileManager implements IFileManager {
         }
 
         String[] uploadRestrictions = propertiesConfig.getProperty("upload_restrictions").split(",");
-        String uploadPolicy = propertiesConfig.getProperty("upload_policy").toLowerCase();
+        String uploadPolicy = propertiesConfig.getProperty("upload_policy").toUpperCase();
 
         if(uploadPolicy.equals("DISALLOW_ALL")){
-            return Arrays.stream(uploadRestrictions).anyMatch(x -> x.equals(extension));
+            return !Arrays.stream(uploadRestrictions).anyMatch(x -> x.equals(extension));
         }
 
         if(uploadPolicy.equals("ALLOW_ALL")){
-            return !Arrays.stream(uploadRestrictions).anyMatch(x -> x.equals(extension));
+            return Arrays.stream(uploadRestrictions).anyMatch(x -> x.equals(extension));
         }
 
         return true;
