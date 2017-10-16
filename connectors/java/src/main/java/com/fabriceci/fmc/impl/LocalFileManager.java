@@ -13,14 +13,13 @@ import com.fabriceci.fmc.util.FileUtils;
 import com.fabriceci.fmc.util.ImageUtils;
 import com.fabriceci.fmc.util.StringUtils;
 import com.fabriceci.fmc.util.ZipUtils;
+import org.apache.commons.fileupload.FileItem;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
 import javax.imageio.ImageIO;
-import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.Part;
 import java.awt.Dimension;
 import java.awt.image.BufferedImage;
 import java.io.BufferedInputStream;
@@ -38,8 +37,10 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Date;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 import static com.fabriceci.fmc.util.FileUtils.getExtension;
 
@@ -514,8 +515,12 @@ public class LocalFileManager extends AbstractFileManager {
     }
 
     @Override
-    public JSONObject actionUpload(HttpServletRequest request) throws FileManagerException {
-        String path = getPath(request, "path");
+    public JSONObject actionUpload(HttpServletRequest request, List<FileItem> items) throws FileManagerException {
+        String path = getPath(request, "path", items);
+        List<FileItem> uploadedFiles = items.stream()
+                                            .filter(item -> !item.isFormField())
+                                            .collect(Collectors.toList());
+
         File targetDirectory = getFile(path);
         String targetDirectoryString = path.substring(0, path.lastIndexOf("/") + 1);
         if (!hasPermission("upload")) {
@@ -528,10 +533,12 @@ public class LocalFileManager extends AbstractFileManager {
         if (!targetDirectory.canWrite()) {
             return getErrorResponse(dictionnary.getProperty("NOT_ALLOWED_SYSTEM"));
         }
-
-        JSONArray array = uploadFiles(request, targetDirectoryString);
-
-        return new JSONObject().put("data", array);
+        try {
+            JSONArray array = uploadFiles(uploadedFiles, targetDirectoryString);
+            return new JSONObject().put("data", array);
+        } catch (FMUploadException e) {
+            return getErrorResponse(e.getMessage());
+        }
 
     }
 
@@ -731,7 +738,7 @@ public class LocalFileManager extends AbstractFileManager {
     }
 
     @Override
-    public JSONObject actionReplace(HttpServletRequest request) throws FileManagerException {
+    public JSONObject actionReplace(HttpServletRequest request, List<FileItem> fileItems) throws FileManagerException {
         String path = getPath(request, "path");
         File file = getFile(path);
         File targetDirectory = new File(file.getParent());
@@ -754,9 +761,8 @@ public class LocalFileManager extends AbstractFileManager {
             return getErrorResponse(dictionnary.getProperty("NOT_ALLOWED_SYSTEM"));
         }
 
-        JSONArray array = null;
+        JSONArray array = uploadFiles(fileItems, targetDirectoryString);
 
-        array = uploadFiles(request, targetDirectoryString);
         file.delete();
         File thumbnail = getThumbnail(path, false);
         if (thumbnail != null && thumbnail.exists()) {
@@ -902,10 +908,10 @@ public class LocalFileManager extends AbstractFileManager {
         return thumbnailFile;
     }
 
-    private JSONArray uploadFiles(HttpServletRequest request, String targetDirectory) throws FileManagerException {
+    private JSONArray uploadFiles(List<FileItem> fileItems, String targetDirectory) throws FileManagerException {
         JSONArray array = new JSONArray();
         try {
-            for (Part uploadedFile : request.getParts()) {
+            for (FileItem uploadedFile : fileItems) {
 
                 if (uploadedFile.getContentType() == null) {
                     continue;
@@ -915,8 +921,8 @@ public class LocalFileManager extends AbstractFileManager {
                     throw new FMUploadException(dictionnary.getProperty("FILE_EMPTY"));
                 }
 
-                String submittedFileName = uploadedFile.getSubmittedFileName();
-                String filename = StringUtils.normalize(FileUtils.getBaseName(submittedFileName)) + '.' + FileUtils.getExtension(submittedFileName);
+                String submittedFileName = uploadedFile.getName();
+                String filename = StringUtils.normalize(FileUtils.getBaseName(submittedFileName)) + '.' + getExtension(submittedFileName);
 
                 if (!isAllowedName(filename, false)) {
                     throw new FMUnallowedException(filename);
@@ -943,7 +949,7 @@ public class LocalFileManager extends AbstractFileManager {
                 Files.copy(new BufferedInputStream(uploadedFile.getInputStream()), Paths.get(uploadedPath), StandardCopyOption.REPLACE_EXISTING);
                 array.put(new JSONObject(getFileInfo(targetDirectory + filename)));
             }
-        } catch (IOException|ServletException e){
+        } catch (IOException e){
             throw new FMIOException(dictionnary.getProperty("ERROR_UPLOADING_FILE"), e);
         }
         return array;

@@ -1,10 +1,12 @@
 package com.fabriceci.fmc;
 
 import com.fabriceci.fmc.error.FileManagerException;
+import org.apache.commons.fileupload.FileItem;
 import org.json.JSONObject;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import java.util.List;
 
 public interface IFileManager {
 
@@ -36,9 +38,9 @@ public interface IFileManager {
 
     JSONObject actionSummarize() throws FileManagerException;
 
-    JSONObject actionUpload(HttpServletRequest request) throws FileManagerException;
+    JSONObject actionUpload(HttpServletRequest request, List<FileItem>items) throws FileManagerException;
 
-    JSONObject actionReplace(HttpServletRequest request) throws FileManagerException;
+    JSONObject actionReplace(HttpServletRequest request, List<FileItem> items) throws FileManagerException;
 
     JSONObject actionSaveFile(HttpServletRequest request) throws FileManagerException;
 }

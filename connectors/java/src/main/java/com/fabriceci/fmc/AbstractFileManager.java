@@ -1,5 +1,24 @@
 package com.fabriceci.fmc;
 
+import com.fabriceci.fmc.error.FMIOException;
+import com.fabriceci.fmc.error.FMInitializationException;
+import com.fabriceci.fmc.error.FMSyntaxException;
+import com.fabriceci.fmc.error.FileManagerException;
+import com.fabriceci.fmc.util.FileUtils;
+import com.fabriceci.fmc.util.StringUtils;
+import org.apache.commons.fileupload.FileItem;
+import org.apache.commons.fileupload.FileItemFactory;
+import org.apache.commons.fileupload.disk.DiskFileItemFactory;
+import org.apache.commons.fileupload.servlet.ServletFileUpload;
+import org.imgscalr.Scalr;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
@@ -12,24 +31,11 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.regex.PatternSyntaxException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import com.fabriceci.fmc.error.FMIOException;
-import com.fabriceci.fmc.error.FMInitializationException;
-import com.fabriceci.fmc.error.FMSyntaxException;
-import com.fabriceci.fmc.error.FileManagerException;
-import com.fabriceci.fmc.util.FileUtils;
-import com.fabriceci.fmc.util.StringUtils;
-import org.imgscalr.Scalr;
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public abstract class AbstractFileManager implements IFileManager {
 
@@ -43,6 +49,8 @@ public abstract class AbstractFileManager implements IFileManager {
 
     protected DateFormat df;
     protected Locale locale;
+
+    protected ServletFileUpload upload;
 
     public AbstractFileManager(Locale locale, Map<String,String> options) throws FMInitializationException {
         // load server properties
@@ -92,6 +100,9 @@ public abstract class AbstractFileManager implements IFileManager {
         if(options != null && !options.isEmpty()) {
             propertiesConfig.putAll(options);
         }
+
+        FileItemFactory factory = new DiskFileItemFactory();
+        this.upload = new ServletFileUpload(factory);
     }
     public AbstractFileManager(Locale locale) throws FMInitializationException {
         this(locale, null);
@@ -110,7 +121,7 @@ public abstract class AbstractFileManager implements IFileManager {
         //baseUrl = ServletUtils.getBaseUrl(request);
 
         final String method = request.getMethod();
-        final String mode = request.getParameter("mode");
+        String mode = request.getParameter("mode");
 
         JSONObject responseData = null;
         response.setStatus(200);
@@ -191,23 +202,27 @@ public abstract class AbstractFileManager implements IFileManager {
                         break;
                 }
             } else if (method.equals("POST")) {
-                switch (mode) {
+                // Parse the request multipart data
+                List<FileItem> items = upload.parseRequest(request);
+                String path = getPath(request, "path", items);
+                mode = getPath(request, "mode", items);
 
+                switch (mode) {
                     default:
                         responseData = getErrorResponse(dictionnary.getProperty("MODE_ERROR"));
                         break;
                     case "upload":
-                        if (!StringUtils.isEmpty(request.getParameter("path"))) {
-                            responseData = actionUpload(request);
+                        if (!StringUtils.isEmpty(path)) {
+                            responseData = actionUpload(request, items);
                         }
                         break;
                     case "replace":
-                        if (!StringUtils.isEmpty(request.getParameter("path"))) {
-                            responseData = actionReplace(request);
+                        if (!StringUtils.isEmpty(path)) {
+                            responseData = actionReplace(request, items);
                         }
                         break;
                     case "savefile":
-                        if (!StringUtils.isEmpty(request.getParameter("path"))) {
+                        if (!StringUtils.isEmpty(path)) {
                             responseData = actionSaveFile(request);
                         }
                         break;
@@ -356,12 +371,12 @@ public abstract class AbstractFileManager implements IFileManager {
     }
 
     @Override
-    public JSONObject actionUpload(HttpServletRequest request) throws FileManagerException {
+    public JSONObject actionUpload(HttpServletRequest request, List<FileItem> items) throws FileManagerException {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public JSONObject actionReplace(HttpServletRequest request) throws FileManagerException {
+    public JSONObject actionReplace(HttpServletRequest request, List<FileItem> items) throws FileManagerException {
         throw new UnsupportedOperationException();
     }
 
@@ -428,11 +443,35 @@ public abstract class AbstractFileManager implements IFileManager {
     }
 
     protected String getPath(HttpServletRequest request, String parameterName){
+        return getPath(request, parameterName, null);
+    }
+
+    /**
+     * Read the path either from the request with given parameter or from given fileItems
+     * TODO: rename to e.g. getVarFromRequest
+     * @param request
+     * @param parameterName
+     * @param fileItems
+     * @return the path
+     */
+    protected String getPath(HttpServletRequest request, String parameterName, List<FileItem> fileItems){
         if(request == null) throw new IllegalArgumentException("Request is null");
-        String path = request.getParameter(parameterName);
-        if(path == null) throw new IllegalArgumentException("Path is null");
-        return path.replace("//", "/").replace("..", "");
-    };
+        String path = null;
+        if (request.getParameter(parameterName) != null) {
+            path = request.getParameter(parameterName);
+        } else {
+            FileItem pathFileItem = fileItems.stream()
+                                             .filter(item -> item.getFieldName().equals(parameterName))
+                                             .findFirst()
+                                             .orElse(null);
+            if (pathFileItem != null){
+                path = pathFileItem.getString();
+            }
+        }
+
+        if(path == null) throw new IllegalArgumentException(parameterName + " is null");
+        return path.replace("//", "/").replace("src/main", "");
+    }
 
     protected Map getFileModel(){
 
