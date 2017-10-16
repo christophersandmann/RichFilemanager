@@ -1,8 +1,18 @@
 package com.fabriceci.fmc.impl;
 
 import com.fabriceci.fmc.AbstractFileManager;
-import com.fabriceci.fmc.error.*;
-import com.fabriceci.fmc.util.*;
+import com.fabriceci.fmc.error.FMConfigException;
+import com.fabriceci.fmc.error.FMFileNotFoundException;
+import com.fabriceci.fmc.error.FMIOException;
+import com.fabriceci.fmc.error.FMInitializationException;
+import com.fabriceci.fmc.error.FMUnallowedException;
+import com.fabriceci.fmc.error.FMUploadException;
+import com.fabriceci.fmc.error.FileManagerException;
+import com.fabriceci.fmc.util.FileManagerUtils;
+import com.fabriceci.fmc.util.FileUtils;
+import com.fabriceci.fmc.util.ImageUtils;
+import com.fabriceci.fmc.util.StringUtils;
+import com.fabriceci.fmc.util.ZipUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -11,9 +21,18 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
-import java.awt.*;
+import java.awt.Dimension;
 import java.awt.image.BufferedImage;
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
@@ -49,7 +68,7 @@ public class LocalFileManager extends AbstractFileManager {
             throw new FMInitializationException("File manager root must be a directory !");
         } else if (!docRoot.exists()) {
             try {
-                Files.createDirectory(docRoot.toPath(), FileUtils.getPermissions755());
+                createDirectoriesWithPermissions(docRoot);
             } catch(IOException e){
                 throw new FMInitializationException("Unable the create the doc root directory: " + docRoot.getAbsolutePath(), e);
             }
@@ -395,13 +414,21 @@ public class LocalFileManager extends AbstractFileManager {
         }
 
         try {
-            Files.createDirectories(file.toPath(), FileUtils.getPermissions755());
+            createDirectoriesWithPermissions(file);
         } catch (IOException e) {
             return getErrorResponse(String.format(dictionnary.getProperty("UNABLE_TO_CREATE_DIRECTORY"), filename));
         }
 
         return new JSONObject().put("data", new JSONObject(getFileInfo(path + filename + "/")));
 
+    }
+
+    private void createDirectoriesWithPermissions(File file) throws IOException {
+        if (System.getProperty("os.name").startsWith("Windows")) {
+            Files.createDirectories(file.toPath());
+        } else {
+            Files.createDirectories(file.toPath(), FileUtils.getPermissions755());
+        }
     }
 
     @Override
@@ -831,7 +858,7 @@ public class LocalFileManager extends AbstractFileManager {
 
         if (!thumbnailDir.exists()) {
             try {
-                Files.createDirectory(thumbnailDir.toPath(), FileUtils.getPermissions755());
+                createDirectoriesWithPermissions(thumbnailDir);
             } catch (IOException e) {
                 throw new FMIOException("Cannot create the directory: " + thumbnailDir.getAbsolutePath(), e);
             }
